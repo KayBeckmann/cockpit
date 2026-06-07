@@ -5,3 +5,42 @@ services:
       dockerfile: docker/web/Dockerfile
     ports:
       - "${WEB_PORT:-8080}:80"
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-cockpit}
+      POSTGRES_USER: ${DB_USER:-cockpit}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-cockpit}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - cockpit_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-cockpit}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    environment:
+      # Im Compose-Netzwerk heißt die Datenbank "db" — abweichend von der
+      # .env, die für die lokale Entwicklung außerhalb von Docker auf
+      # "localhost" zeigt (siehe DB_HOST in .env.example).
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-cockpit}
+      DB_USER: ${DB_USER:-cockpit}
+      DB_PASSWORD: ${DB_PASSWORD:-cockpit}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-local-env}
+    ports:
+      - "${BACKEND_PORT:-8085}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  cockpit_db_data:

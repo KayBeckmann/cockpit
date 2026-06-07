@@ -63,7 +63,21 @@ Jedes Objekt trägt `kontext ∈ {privat, arbeit, beides}`. Ein globaler UI-Scha
 
 ## Selbst hosten
 
-Deployment-Anleitung folgt mit M0 (Docker Compose für PostgreSQL + Dart Frog Backend).
+```sh
+cp .env.example .env   # Werte bei Bedarf anpassen
+docker compose up -d --build
+```
+
+Startet drei Services: `web` (Flutter-Web-App via nginx, Port `WEB_PORT`),
+`db` (PostgreSQL, Port `DB_PORT`) und `backend` (Dart-Frog-API, Port
+`BACKEND_PORT`). Migrationen werden separat ausgeführt:
+
+```sh
+cd backend && dart run bin/migrate.dart
+```
+
+Details zu Backend-Konfiguration und Migrationen stehen in
+[`backend/README.md`](backend/README.md).
 
 ---
 
