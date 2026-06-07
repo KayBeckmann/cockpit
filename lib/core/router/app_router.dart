@@ -7,7 +7,9 @@ import '../../features/contacts/presentation/contacts_screen.dart';
 import '../../features/dashboard/presentation/dashboard_screen.dart';
 import '../../features/events/presentation/events_screen.dart';
 import '../../features/finance/presentation/finance_screen.dart';
-import '../../features/projects/presentation/projects_screen.dart';
+import '../../features/projects/data/project_model.dart';
+import '../../features/projects/presentation/project_detail_screen.dart';
+import '../../features/projects/presentation/project_list_screen.dart';
 import '../../features/reminders/presentation/reminders_screen.dart';
 import '../../features/tasks/data/task_model.dart';
 import '../../features/tasks/presentation/task_detail_screen.dart';
@@ -56,7 +58,17 @@ final goRouterProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          _branch('/projects', const ProjectsScreen()),
+          _branch(
+            '/projects',
+            const ProjectListScreen(),
+            routes: [
+              GoRoute(
+                path: ':id',
+                builder: (context, state) =>
+                    ProjectDetailScreen(project: state.extra! as Project),
+              ),
+            ],
+          ),
           _branch('/events', const EventsScreen()),
           _branch('/contacts', const ContactsScreen()),
           _branch('/reminders', const RemindersScreen()),
