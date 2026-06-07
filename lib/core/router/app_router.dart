@@ -9,7 +9,7 @@ import '../../features/events/presentation/events_screen.dart';
 import '../../features/finance/presentation/finance_screen.dart';
 import '../../features/projects/presentation/projects_screen.dart';
 import '../../features/reminders/presentation/reminders_screen.dart';
-import '../../features/tasks/presentation/tasks_screen.dart';
+import '../../features/tasks/presentation/task_list_screen.dart';
 import '../../features/wiki/presentation/wiki_screen.dart';
 import '../auth/auth_provider.dart';
 import 'app_shell.dart';
@@ -43,7 +43,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             AppShell(navigationShell: navigationShell),
         branches: [
           _branch('/', const DashboardScreen()),
-          _branch('/tasks', const TasksScreen()),
+          _branch('/tasks', const TaskListScreen()),
           _branch('/projects', const ProjectsScreen()),
           _branch('/events', const EventsScreen()),
           _branch('/contacts', const ContactsScreen()),
