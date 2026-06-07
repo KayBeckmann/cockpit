@@ -11,9 +11,9 @@ import 'task_list_provider.dart';
 /// aufrufenden Liste (`extra` der Route) — ein zusätzlicher Ladevorgang
 /// entfällt, weil [TaskListScreen] die Daten bereits hält.
 ///
-/// Wiederholungsregeln und Teilaufgaben werden hier bewusst nicht
-/// bearbeitet — eigene Oberflächen dafür entstehen mit Roadmap-Punkt
-/// „Wiederkehrende Aufgaben + Teilaufgaben".
+/// Verknüpfungen bleiben hier bewusst außen vor — eine eigene Oberfläche
+/// dafür entsteht mit der „Universellen Verlinkung" (M6), um Datenschicht
+/// und UI nicht doppelt aufzubauen.
 class TaskDetailScreen extends ConsumerStatefulWidget {
   /// Erstellt den Bearbeiten-Bildschirm für [task].
   const TaskDetailScreen({required this.task, super.key});
@@ -30,11 +30,17 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   late final TextEditingController _titelController;
   late final TextEditingController _beschreibungController;
   late final TextEditingController _tagsController;
+  final _neueTeilaufgabeController = TextEditingController();
   late DateTime? _deadline;
   late int? _prioritaet;
   late String _status;
   late String? _kontext;
   late String? _energieLevel;
+  late bool _wiederkehrend;
+  late String _wiederholungTyp;
+  late int _wiederholungIntervall;
+  late DateTime? _wiederholungBis;
+  late List<_Teilaufgabe> _teilaufgaben;
   bool _isSaving = false;
 
   @override
@@ -49,6 +55,14 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     _status = task.status;
     _kontext = task.kontext;
     _energieLevel = task.energieLevel;
+
+    final wiederholung = task.wiederholung;
+    _wiederkehrend = wiederholung != null;
+    _wiederholungTyp = wiederholung?['typ'] as String? ?? taskWiederholungTypOptions.first;
+    _wiederholungIntervall = wiederholung?['intervall'] as int? ?? 1;
+    _wiederholungBis = _parseOptionalDate(wiederholung?['bis']);
+
+    _teilaufgaben = _parseTeilaufgaben(task.teilaufgaben);
   }
 
   @override
@@ -56,6 +70,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     _titelController.dispose();
     _beschreibungController.dispose();
     _tagsController.dispose();
+    _neueTeilaufgabeController.dispose();
     super.dispose();
   }
 
@@ -68,6 +83,26 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
       lastDate: DateTime(initial.year + 5),
     );
     if (picked != null) setState(() => _deadline = picked);
+  }
+
+  Future<void> _pickWiederholungBis() async {
+    final initial = _wiederholungBis ?? DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(initial.year - 1),
+      lastDate: DateTime(initial.year + 10),
+    );
+    if (picked != null) setState(() => _wiederholungBis = picked);
+  }
+
+  void _addTeilaufgabe() {
+    final titel = _neueTeilaufgabeController.text.trim();
+    if (titel.isEmpty) return;
+    setState(() {
+      _teilaufgaben.add(_Teilaufgabe(titel: titel));
+      _neueTeilaufgabeController.clear();
+    });
   }
 
   Future<void> _save() async {
@@ -90,6 +125,16 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
       'kontext': _kontext,
       'energieLevel': _energieLevel,
       'tags': tags,
+      'wiederholung': _wiederkehrend
+          ? {
+              'typ': _wiederholungTyp,
+              'intervall': _wiederholungIntervall,
+              if (_wiederholungBis != null) 'bis': _wiederholungBis!.toIso8601String(),
+            }
+          : null,
+      'teilaufgaben': _teilaufgaben.isEmpty
+          ? null
+          : [for (final teilaufgabe in _teilaufgaben) teilaufgabe.toJson()],
     });
 
     if (!mounted) return;
@@ -202,6 +247,103 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
               ),
             ),
             const SizedBox(height: 24),
+            Text('Wiederholung', style: Theme.of(context).textTheme.titleMedium),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Wiederkehrend'),
+              value: _wiederkehrend,
+              onChanged: (value) => setState(() => _wiederkehrend = value),
+            ),
+            if (_wiederkehrend) ...[
+              DropdownButtonFormField<String>(
+                initialValue: _wiederholungTyp,
+                decoration: const InputDecoration(labelText: 'Rhythmus'),
+                items: [
+                  for (final typ in taskWiederholungTypOptions)
+                    DropdownMenuItem(value: typ, child: Text(taskWiederholungTypLabels[typ]!)),
+                ],
+                onChanged: (value) => setState(() => _wiederholungTyp = value!),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Intervall'),
+                subtitle: Text('Alle $_wiederholungIntervall Einheiten'),
+                trailing: Wrap(
+                  spacing: 4,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.remove_circle_outline),
+                      tooltip: 'Intervall verkleinern',
+                      onPressed: _wiederholungIntervall > 1
+                          ? () => setState(() => _wiederholungIntervall--)
+                          : null,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.add_circle_outline),
+                      tooltip: 'Intervall vergrößern',
+                      onPressed: () => setState(() => _wiederholungIntervall++),
+                    ),
+                  ],
+                ),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Endet am'),
+                subtitle: Text(
+                  _wiederholungBis == null ? 'Kein Enddatum' : formatTaskDate(_wiederholungBis!),
+                ),
+                trailing: Wrap(
+                  spacing: 4,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit_calendar_outlined),
+                      tooltip: 'Enddatum wählen',
+                      onPressed: _pickWiederholungBis,
+                    ),
+                    if (_wiederholungBis != null)
+                      IconButton(
+                        icon: const Icon(Icons.clear),
+                        tooltip: 'Enddatum entfernen',
+                        onPressed: () => setState(() => _wiederholungBis = null),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+            Text('Teilaufgaben', style: Theme.of(context).textTheme.titleMedium),
+            for (var index = 0; index < _teilaufgaben.length; index++)
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: Text(_teilaufgaben[index].titel),
+                value: _teilaufgaben[index].erledigt,
+                onChanged: (checked) =>
+                    setState(() => _teilaufgaben[index].erledigt = checked ?? false),
+                secondary: IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: 'Teilaufgabe entfernen',
+                  onPressed: () => setState(() => _teilaufgaben.removeAt(index)),
+                ),
+              ),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _neueTeilaufgabeController,
+                    decoration: const InputDecoration(labelText: 'Neue Teilaufgabe'),
+                    onFieldSubmitted: (_) => _addTeilaufgabe(),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  tooltip: 'Teilaufgabe hinzufügen',
+                  onPressed: _addTeilaufgabe,
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
             FilledButton(
               onPressed: _isSaving ? null : _save,
               child: _isSaving
@@ -217,4 +359,30 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
       ),
     );
   }
+}
+
+DateTime? _parseOptionalDate(Object? value) =>
+    value is String ? DateTime.tryParse(value) : null;
+
+List<_Teilaufgabe> _parseTeilaufgaben(Object? raw) {
+  if (raw is! List) return [];
+  return [
+    for (final entry in raw)
+      if (entry is Map)
+        _Teilaufgabe(
+          titel: (entry['titel'] as String?) ?? '',
+          erledigt: entry['erledigt'] == true,
+        ),
+  ];
+}
+
+/// Ein Eintrag der Teilaufgaben-Checkliste — entspricht dem rohen
+/// `{titel, erledigt}`-JSON, das das Backend unter `teilaufgaben` speichert.
+class _Teilaufgabe {
+  _Teilaufgabe({required this.titel, this.erledigt = false});
+
+  String titel;
+  bool erledigt;
+
+  Map<String, Object?> toJson() => {'titel': titel, 'erledigt': erledigt};
 }

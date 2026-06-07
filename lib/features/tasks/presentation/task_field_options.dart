@@ -17,3 +17,18 @@ const Map<int, String> taskPriorityLabels = {
   3: '3 – Hoch',
   4: '4 – Kritisch',
 };
+
+/// Gespiegelt von `Wiederholung.typen` im Backend (siehe `wiederholung.dart`).
+const List<String> taskWiederholungTypOptions = [
+  'taeglich',
+  'woechentlich',
+  'monatlich',
+  'jaehrlich',
+];
+
+const Map<String, String> taskWiederholungTypLabels = {
+  'taeglich': 'Täglich',
+  'woechentlich': 'Wöchentlich',
+  'monatlich': 'Monatlich',
+  'jaehrlich': 'Jährlich',
+};

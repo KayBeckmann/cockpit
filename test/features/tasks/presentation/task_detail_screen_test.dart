@@ -2,6 +2,7 @@ import 'package:cockpit/core/errors/failures.dart';
 import 'package:cockpit/core/errors/result.dart';
 import 'package:cockpit/features/tasks/data/task_model.dart';
 import 'package:cockpit/features/tasks/data/task_repository.dart';
+import 'package:cockpit/features/tasks/presentation/task_date_format.dart';
 import 'package:cockpit/features/tasks/presentation/task_detail_screen.dart';
 import 'package:cockpit/features/tasks/presentation/task_list_provider.dart';
 import 'package:flutter/material.dart';
@@ -24,11 +25,30 @@ void main() {
     updatedAt: DateTime.utc(2026, 6, 1),
   );
 
-  Future<void> pumpScreen(WidgetTester tester) async {
-    // Großes Surface, damit das gesamte Formular (inkl. Tags-Feld und
-    // Speichern-Button am Ende der ListView) ohne Scrollen aufgebaut wird —
-    // sonst erstellt die Sliver-Liste die unteren Felder gar nicht erst.
-    tester.view.physicalSize = const Size(800, 2400);
+  final wiederholungBis = DateTime.parse('2026-12-31T12:00:00.000Z');
+  final taskMitWiederholungUndTeilaufgaben = Task(
+    id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+    titel: 'Wöchentliches Update schreiben',
+    status: 'aktiv',
+    wiederholung: {
+      'typ': 'woechentlich',
+      'intervall': 2,
+      'bis': wiederholungBis.toIso8601String(),
+    },
+    teilaufgaben: const [
+      {'titel': 'Entwurf schreiben', 'erledigt': true},
+      {'titel': 'Review einholen', 'erledigt': false},
+    ],
+    createdAt: DateTime.utc(2026, 6, 1),
+    updatedAt: DateTime.utc(2026, 6, 1),
+  );
+
+  Future<void> pumpScreen(WidgetTester tester, {Task? taskOverride}) async {
+    // Großes Surface, damit das gesamte Formular (inkl. Wiederholung,
+    // Teilaufgaben und Speichern-Button am Ende der ListView) ohne Scrollen
+    // aufgebaut wird — sonst erstellt die Sliver-Liste die unteren Felder
+    // gar nicht erst.
+    tester.view.physicalSize = const Size(800, 4200);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -36,7 +56,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [taskRepositoryProvider.overrideWithValue(repository)],
-        child: MaterialApp(home: TaskDetailScreen(task: task)),
+        child: MaterialApp(home: TaskDetailScreen(task: taskOverride ?? task)),
       ),
     );
     await tester.pumpAndSettle();
@@ -97,6 +117,97 @@ void main() {
 
     expect(find.text('Aufgabe konnte nicht gespeichert werden'), findsOneWidget);
     expect(find.byType(TaskDetailScreen), findsOneWidget);
+  });
+
+  testWidgets('zeigt Wiederholung und Teilaufgaben einer Aufgabe vorausgefüllt an', (tester) async {
+    await pumpScreen(tester, taskOverride: taskMitWiederholungUndTeilaufgaben);
+
+    final wiederkehrendSwitch = tester.widget<SwitchListTile>(
+      find.widgetWithText(SwitchListTile, 'Wiederkehrend'),
+    );
+    expect(wiederkehrendSwitch.value, isTrue);
+    expect(find.text('Wöchentlich'), findsOneWidget);
+    expect(find.text('Alle 2 Einheiten'), findsOneWidget);
+    expect(find.text(formatTaskDate(wiederholungBis)), findsOneWidget);
+
+    final entwurf = tester.widget<CheckboxListTile>(
+      find.widgetWithText(CheckboxListTile, 'Entwurf schreiben'),
+    );
+    expect(entwurf.value, isTrue);
+    final review = tester.widget<CheckboxListTile>(
+      find.widgetWithText(CheckboxListTile, 'Review einholen'),
+    );
+    expect(review.value, isFalse);
+  });
+
+  testWidgets('aktiviert eine Wiederholungsregel und speichert sie', (tester) async {
+    repository.updateResult = Ok(task);
+    await pumpScreen(tester);
+
+    await tester.tap(find.widgetWithText(SwitchListTile, 'Wiederkehrend'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(DropdownButtonFormField<String>, 'Rhythmus'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Monatlich').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Intervall vergrößern'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Speichern'));
+    await tester.pumpAndSettle();
+
+    final (_, changes) = repository.updateCalls.single;
+    expect(changes['wiederholung'], equals({'typ': 'monatlich', 'intervall': 2}));
+  });
+
+  testWidgets('deaktiviert eine bestehende Wiederholungsregel beim Speichern', (tester) async {
+    repository.updateResult = Ok(taskMitWiederholungUndTeilaufgaben);
+    await pumpScreen(tester, taskOverride: taskMitWiederholungUndTeilaufgaben);
+
+    await tester.tap(find.widgetWithText(SwitchListTile, 'Wiederkehrend'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Speichern'));
+    await tester.pumpAndSettle();
+
+    final (_, changes) = repository.updateCalls.single;
+    expect(changes['wiederholung'], isNull);
+  });
+
+  testWidgets('verwaltet die Teilaufgaben-Checkliste: abhaken, entfernen, hinzufügen', (
+    tester,
+  ) async {
+    repository.updateResult = Ok(taskMitWiederholungUndTeilaufgaben);
+    await pumpScreen(tester, taskOverride: taskMitWiederholungUndTeilaufgaben);
+
+    await tester.tap(find.widgetWithText(CheckboxListTile, 'Review einholen'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.descendant(
+        of: find.widgetWithText(CheckboxListTile, 'Entwurf schreiben'),
+        matching: find.byIcon(Icons.delete_outline),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextFormField, 'Neue Teilaufgabe'), 'Veröffentlichen');
+    await tester.tap(find.byTooltip('Teilaufgabe hinzufügen'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Speichern'));
+    await tester.pumpAndSettle();
+
+    final (_, changes) = repository.updateCalls.single;
+    expect(
+      changes['teilaufgaben'],
+      equals([
+        {'titel': 'Review einholen', 'erledigt': true},
+        {'titel': 'Veröffentlichen', 'erledigt': false},
+      ]),
+    );
   });
 }
 
