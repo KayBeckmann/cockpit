@@ -64,6 +64,7 @@ class TaskRepository {
     String? status,
     String? projektId,
     String? kontext,
+    Object? wiederholung,
     String? energieLevel,
     List<String>? tags,
   }) async {
@@ -71,10 +72,11 @@ class TaskRepository {
       Sql.named('''
         INSERT INTO tasks
           (titel, beschreibung, deadline, prioritaet, status, projekt_id,
-           kontext, energie_level, tags)
+           kontext, wiederholung, energie_level, tags)
         VALUES
           (@titel, @beschreibung, @deadline, @prioritaet,
-           COALESCE(@status, 'inbox'), @projektId, @kontext, @energieLevel, @tags)
+           COALESCE(@status, 'inbox'), @projektId, @kontext, @wiederholung,
+           @energieLevel, @tags)
         RETURNING $_columns
       '''),
       parameters: {
@@ -85,6 +87,7 @@ class TaskRepository {
         'status': status,
         'projektId': projektId,
         'kontext': kontext,
+        'wiederholung': wiederholung,
         'energieLevel': energieLevel,
         'tags': tags,
       },
@@ -106,6 +109,7 @@ class TaskRepository {
       'status',
       'projekt_id',
       'kontext',
+      'wiederholung',
       'energie_level',
       'tags',
     };

@@ -103,6 +103,20 @@ void main() {
       expect(response.statusCode, equals(HttpStatus.badRequest));
     });
 
+    test('lehnt eine ungültige Wiederholungsregel mit 400 ab', () async {
+      when(() => request.method).thenReturn(HttpMethod.post);
+      when(() => context.request).thenReturn(
+        requestWithBody({
+          'titel': 'Neue Aufgabe',
+          'wiederholung': {'typ': 'stuendlich', 'intervall': 1},
+        }),
+      );
+
+      final response = await route.onRequest(context);
+
+      expect(response.statusCode, equals(HttpStatus.badRequest));
+    });
+
     test('legt eine Aufgabe an und liefert 201', () async {
       when(() => request.method).thenReturn(HttpMethod.post);
       when(
@@ -117,6 +131,7 @@ void main() {
           status: any(named: 'status'),
           projektId: any(named: 'projektId'),
           kontext: any(named: 'kontext'),
+          wiederholung: any(named: 'wiederholung'),
           energieLevel: any(named: 'energieLevel'),
           tags: any(named: 'tags'),
         ),
@@ -127,6 +142,47 @@ void main() {
       expect(response.statusCode, equals(HttpStatus.created));
       final body = await response.json() as Map<String, dynamic>;
       expect(body['id'], equals(task.id));
+    });
+
+    test('normalisiert eine gültige Wiederholungsregel', () async {
+      when(() => request.method).thenReturn(HttpMethod.post);
+      when(() => context.request).thenReturn(
+        requestWithBody({
+          'titel': 'Müll rausbringen',
+          'wiederholung': {
+            'typ': 'woechentlich',
+            'intervall': 2,
+            'bis': '2026-12-31T00:00:00.000Z',
+          },
+        }),
+      );
+      when(
+        () => repository.create(
+          titel: any(named: 'titel'),
+          beschreibung: any(named: 'beschreibung'),
+          deadline: any(named: 'deadline'),
+          prioritaet: any(named: 'prioritaet'),
+          status: any(named: 'status'),
+          projektId: any(named: 'projektId'),
+          kontext: any(named: 'kontext'),
+          wiederholung: any(named: 'wiederholung'),
+          energieLevel: any(named: 'energieLevel'),
+          tags: any(named: 'tags'),
+        ),
+      ).thenAnswer((_) async => task);
+
+      await route.onRequest(context);
+
+      verify(
+        () => repository.create(
+          titel: 'Müll rausbringen',
+          wiederholung: {
+            'typ': 'woechentlich',
+            'intervall': 2,
+            'bis': '2026-12-31T00:00:00.000Z',
+          },
+        ),
+      ).called(1);
     });
   });
 

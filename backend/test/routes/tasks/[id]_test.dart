@@ -89,6 +89,71 @@ void main() {
       expect(captured.single, equals({'status': 'aktiv'}));
     });
 
+    test('normalisiert eine gültige Wiederholungsregel', () async {
+      when(() => context.request).thenReturn(
+        Request.put(
+          uri,
+          headers: {'content-type': 'application/json'},
+          body: jsonEncode({
+            'wiederholung': {'typ': 'taeglich', 'intervall': 1},
+          }),
+        ),
+      );
+      when(
+        () => repository.update(taskId, any()),
+      ).thenAnswer((_) async => task);
+
+      final response = await route.onRequest(context, taskId);
+
+      expect(response.statusCode, equals(HttpStatus.ok));
+      final captured = verify(
+        () => repository.update(taskId, captureAny()),
+      ).captured;
+      expect(
+        captured.single,
+        equals({
+          'wiederholung': {'typ': 'taeglich', 'intervall': 1},
+        }),
+      );
+    });
+
+    test('lehnt eine ungültige Wiederholungsregel mit 400 ab', () async {
+      when(() => context.request).thenReturn(
+        Request.put(
+          uri,
+          headers: {'content-type': 'application/json'},
+          body: jsonEncode({
+            'wiederholung': {'typ': 'taeglich', 'intervall': 0},
+          }),
+        ),
+      );
+
+      final response = await route.onRequest(context, taskId);
+
+      expect(response.statusCode, equals(HttpStatus.badRequest));
+    });
+
+    test('entfernt die Wiederholung bei explizitem null', () async {
+      when(() => context.request).thenReturn(
+        Request.put(
+          uri,
+          headers: {'content-type': 'application/json'},
+          body: jsonEncode({'wiederholung': null}),
+        ),
+      );
+      when(
+        () => repository.update(taskId, any()),
+      ).thenAnswer((_) async => task);
+
+      final response = await route.onRequest(context, taskId);
+
+      expect(response.statusCode, equals(HttpStatus.ok));
+      final captured = verify(
+        () => repository.update(taskId, captureAny()),
+      ).captured;
+      expect(captured.single, equals({'wiederholung': null}));
+    });
+
     test('liefert 404, wenn keine Aufgabe existiert', () async {
       when(() => context.request).thenReturn(
         Request.put(

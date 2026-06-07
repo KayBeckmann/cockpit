@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:backend/src/http/request_json.dart';
 import 'package:backend/src/tasks/task_repository.dart';
+import 'package:backend/src/tasks/wiederholung.dart';
 import 'package:dart_frog/dart_frog.dart';
 
 /// `GET /tasks` (mit `?kontext=`, `?status=`, `?projekt_id=`) und
@@ -34,6 +35,16 @@ Future<Response> _create(RequestContext context) async {
     );
   }
 
+  Wiederholung? wiederholung;
+  try {
+    wiederholung = parseWiederholung(body?['wiederholung']);
+  } on FormatException catch (error) {
+    return Response.json(
+      statusCode: HttpStatus.badRequest,
+      body: {'error': error.message},
+    );
+  }
+
   final repository = await context.read<Future<TaskRepository>>();
   final task = await repository.create(
     titel: titel,
@@ -43,6 +54,7 @@ Future<Response> _create(RequestContext context) async {
     status: body?['status'] as String?,
     projektId: body?['projektId'] as String?,
     kontext: body?['kontext'] as String?,
+    wiederholung: wiederholung?.toJson(),
     energieLevel: body?['energieLevel'] as String?,
     tags: (body?['tags'] as List?)?.cast<String>(),
   );

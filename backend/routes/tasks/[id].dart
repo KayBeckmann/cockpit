@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:backend/src/http/request_json.dart';
 import 'package:backend/src/tasks/task_repository.dart';
+import 'package:backend/src/tasks/wiederholung.dart';
 import 'package:dart_frog/dart_frog.dart';
 
 /// `GET|PUT|DELETE /tasks/:id`.
@@ -45,6 +46,18 @@ Future<Response> _update(RequestContext context, String id) async {
   }
   if (body.containsKey('tags')) {
     changes['tags'] = (body['tags'] as List?)?.cast<String>();
+  }
+  if (body.containsKey('wiederholung')) {
+    try {
+      changes['wiederholung'] = parseWiederholung(
+        body['wiederholung'],
+      )?.toJson();
+    } on FormatException catch (error) {
+      return Response.json(
+        statusCode: HttpStatus.badRequest,
+        body: {'error': error.message},
+      );
+    }
   }
 
   final repository = await context.read<Future<TaskRepository>>();
