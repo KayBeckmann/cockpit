@@ -24,6 +24,8 @@ void main() {
     String status = 'inbox',
     DateTime? deadline,
     DateTime? createdAt,
+    int? prioritaet,
+    String? energieLevel,
   }) {
     final timestamp = createdAt ?? DateTime.utc(2026, 6, 1);
     return Task(
@@ -31,6 +33,8 @@ void main() {
       titel: titel,
       status: status,
       deadline: deadline,
+      prioritaet: prioritaet,
+      energieLevel: energieLevel,
       createdAt: timestamp,
       updatedAt: timestamp,
     );
@@ -120,6 +124,43 @@ void main() {
     expect(positionUeberfaellig, lessThan(positionHeute));
   });
 
+  testWidgets(
+    'Heute-Tab sortiert bei gleicher Fälligkeit nach Priorität (Eisenhower: Dringlichkeit × Wichtigkeit)',
+    (tester) async {
+      repository.listResult = Ok([
+        buildTask(
+          id: '1',
+          titel: 'Niedrige Priorität',
+          status: 'aktiv',
+          deadline: todayNoon,
+          prioritaet: 1,
+        ),
+        buildTask(
+          id: '2',
+          titel: 'Kritische Priorität',
+          status: 'aktiv',
+          deadline: todayNoon,
+          prioritaet: 4,
+        ),
+        buildTask(id: '3', titel: 'Überfällig, ohne Priorität', status: 'aktiv', deadline: yesterdayNoon),
+      ]);
+
+      await pumpScreen(tester);
+      await tester.tap(find.text('Heute'));
+      await tester.pumpAndSettle();
+
+      final positionUeberfaellig = tester.getTopLeft(find.text('Überfällig, ohne Priorität')).dy;
+      final positionKritisch = tester.getTopLeft(find.text('Kritische Priorität')).dy;
+      final positionNiedrig = tester.getTopLeft(find.text('Niedrige Priorität')).dy;
+
+      // Dringlichkeit (Fälligkeit) schlägt Wichtigkeit (Priorität): das
+      // überfällige Element steht trotz fehlender Priorität ganz oben.
+      expect(positionUeberfaellig, lessThan(positionKritisch));
+      // Bei gleicher Fälligkeit gewinnt die höhere Priorität.
+      expect(positionKritisch, lessThan(positionNiedrig));
+    },
+  );
+
   testWidgets('Heute-Tab zeigt einen Hinweis, wenn nichts ansteht', (tester) async {
     repository.listResult = Ok([buildTask(id: '1', titel: 'Ohne Deadline', status: 'aktiv')]);
 
@@ -145,6 +186,55 @@ void main() {
     expect(find.text('Aktive Aufgabe'), findsOneWidget);
     expect(find.text('Archivierte Aufgabe'), findsOneWidget);
   });
+
+  testWidgets('zeigt das Energie-Level einer Aufgabe als Tag an', (tester) async {
+    repository.listResult = Ok([
+      buildTask(id: '1', titel: 'Konzentrationsarbeit', energieLevel: 'hoch'),
+      buildTask(id: '2', titel: 'Kleinkram', energieLevel: 'niedrig'),
+      buildTask(id: '3', titel: 'Ohne Angabe'),
+    ]);
+
+    await pumpScreen(tester);
+    await tester.tap(find.text('Alle'));
+    await tester.pumpAndSettle();
+
+    expect(find.descendant(of: find.byType(Chip), matching: find.text('hoch')), findsOneWidget);
+    expect(find.descendant(of: find.byType(Chip), matching: find.text('niedrig')), findsOneWidget);
+  });
+
+  testWidgets(
+    'Energie-Level-Filter schränkt alle Ansichten auf das gewählte Level ein und lässt sich wieder aufheben',
+    (tester) async {
+      repository.listResult = Ok([
+        buildTask(id: '1', titel: 'Hochenergie-Aufgabe', energieLevel: 'hoch'),
+        buildTask(id: '2', titel: 'Niedrigenergie-Aufgabe', energieLevel: 'niedrig'),
+        buildTask(id: '3', titel: 'Ohne Energie-Level'),
+      ]);
+
+      await pumpScreen(tester);
+      await tester.tap(find.text('Alle'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Hochenergie-Aufgabe'), findsOneWidget);
+      expect(find.text('Niedrigenergie-Aufgabe'), findsOneWidget);
+      expect(find.text('Ohne Energie-Level'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilterChip, 'hoch'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Hochenergie-Aufgabe'), findsOneWidget);
+      expect(find.text('Niedrigenergie-Aufgabe'), findsNothing);
+      expect(find.text('Ohne Energie-Level'), findsNothing);
+
+      // Erneutes Antippen hebt den Filter wieder auf.
+      await tester.tap(find.widgetWithText(FilterChip, 'hoch'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Hochenergie-Aufgabe'), findsOneWidget);
+      expect(find.text('Niedrigenergie-Aufgabe'), findsOneWidget);
+      expect(find.text('Ohne Energie-Level'), findsOneWidget);
+    },
+  );
 
   testWidgets('zeigt eine Fehlermeldung mit Wiederholen-Button bei einem Fehlschlag', (
     tester,

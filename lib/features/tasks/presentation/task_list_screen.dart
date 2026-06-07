@@ -6,6 +6,7 @@ import '../../../core/errors/failures.dart';
 import '../data/task_model.dart';
 import 'task_create_sheet.dart';
 import 'task_date_format.dart';
+import 'task_field_options.dart';
 import 'task_list_provider.dart';
 
 const _activeStatuses = {'inbox', 'aktiv'};
@@ -13,11 +14,23 @@ const _activeStatuses = {'inbox', 'aktiv'};
 /// Aufgabenübersicht mit drei Ansichten — der globale Kontext-Filter wird
 /// bereits serverseitig durch [taskListProvider] angewendet (siehe
 /// [[Cockpit/Entscheidungen/ADR-0006_kontext_trennungslogik_bestaetigt|ADR-0006]]).
-class TaskListScreen extends ConsumerWidget {
+///
+/// Der Energie-Level-Filter oberhalb der Tabs schränkt alle drei Ansichten
+/// clientseitig auf „hoch" oder „niedrig" ein — erneutes Antippen des
+/// aktiven Filter-Chips hebt ihn wieder auf (kein „Alle"-Chip nötig, der
+/// mit dem gleichnamigen Tab kollidieren würde).
+class TaskListScreen extends ConsumerStatefulWidget {
   const TaskListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TaskListScreen> createState() => _TaskListScreenState();
+}
+
+class _TaskListScreenState extends ConsumerState<TaskListScreen> {
+  String? _energieFilter;
+
+  @override
+  Widget build(BuildContext context) {
     final tasks = ref.watch(taskListProvider);
 
     return Scaffold(
@@ -39,13 +52,23 @@ class TaskListScreen extends ConsumerWidget {
                 ],
               ),
             ),
+            _EnergyFilterBar(
+              selected: _energieFilter,
+              onChanged: (level) => setState(() => _energieFilter = level),
+            ),
             Expanded(
               child: switch (tasks) {
                 AsyncData(:final value) => TabBarView(
                   children: [
-                    _TaskList(tasks: _inboxTasks(value), emptyHint: _inboxEmptyHint),
-                    _TaskList(tasks: _todayTasks(value), emptyHint: _todayEmptyHint),
-                    _TaskList(tasks: value, emptyHint: _allEmptyHint),
+                    _TaskList(
+                      tasks: _filterByEnergy(_inboxTasks(value)),
+                      emptyHint: _inboxEmptyHint,
+                    ),
+                    _TaskList(
+                      tasks: _filterByEnergy(_todayTasks(value)),
+                      emptyHint: _todayEmptyHint,
+                    ),
+                    _TaskList(tasks: _filterByEnergy(value), emptyHint: _allEmptyHint),
                   ],
                 ),
                 AsyncError(:final error) => _ErrorView(
@@ -59,6 +82,39 @@ class TaskListScreen extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  List<Task> _filterByEnergy(List<Task> tasks) {
+    final filter = _energieFilter;
+    if (filter == null) return tasks;
+    return tasks.where((task) => task.energieLevel == filter).toList();
+  }
+}
+
+class _EnergyFilterBar extends StatelessWidget {
+  const _EnergyFilterBar({required this.selected, required this.onChanged});
+
+  final String? selected;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Wrap(
+        spacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          const Text('Energie-Level:'),
+          for (final level in taskEnergyLevelOptions)
+            FilterChip(
+              label: Text(level),
+              selected: selected == level,
+              onSelected: (isSelected) => onChanged(isSelected ? level : null),
+            ),
+        ],
       ),
     );
   }
@@ -84,8 +140,17 @@ List<Task> _todayTasks(List<Task> tasks) {
               !deadline.isAfter(endOfToday) &&
               _activeStatuses.contains(task.status);
         }).toList()
-        ..sort((a, b) => a.deadline!.compareTo(b.deadline!));
+        ..sort(_byUrgencyThenImportance);
   return today;
+}
+
+/// Eisenhower-Sortierung für die Heute-Ansicht: zuerst nach Fälligkeit
+/// (Dringlichkeit — Überfälliges vor Anstehendem), bei gleicher Fälligkeit
+/// nach Priorität absteigend (Wichtigkeit — Kritisches vor Nebensächlichem).
+int _byUrgencyThenImportance(Task a, Task b) {
+  final byDeadline = a.deadline!.compareTo(b.deadline!);
+  if (byDeadline != 0) return byDeadline;
+  return (b.prioritaet ?? 0).compareTo(a.prioritaet ?? 0);
 }
 
 class _TaskList extends StatelessWidget {
@@ -127,7 +192,15 @@ class _TaskTile extends StatelessWidget {
       leading: Icon(_statusIcon(task.status)),
       title: Text(task.titel),
       subtitle: deadline != null ? Text('Fällig: ${formatTaskDate(deadline)}') : null,
-      trailing: task.energieLevel != null ? Chip(label: Text(task.energieLevel!)) : null,
+      trailing: task.energieLevel != null
+          ? Chip(
+              avatar: Icon(
+                task.energieLevel == 'hoch' ? Icons.bolt : Icons.battery_2_bar,
+                size: 18,
+              ),
+              label: Text(task.energieLevel!),
+            )
+          : null,
       onTap: () => context.push('/tasks/${task.id}', extra: task),
     );
   }
