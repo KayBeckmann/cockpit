@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/errors/failures.dart';
 import '../data/task_model.dart';
+import 'task_create_sheet.dart';
+import 'task_date_format.dart';
 import 'task_list_provider.dart';
 
 const _activeStatuses = {'inbox', 'aktiv'};
@@ -17,36 +20,45 @@ class TaskListScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tasks = ref.watch(taskListProvider);
 
-    return DefaultTabController(
-      length: 3,
-      child: Column(
-        children: [
-          const Material(
-            child: TabBar(
-              tabs: [
-                Tab(text: 'Inbox'),
-                Tab(text: 'Heute'),
-                Tab(text: 'Alle'),
-              ],
-            ),
-          ),
-          Expanded(
-            child: switch (tasks) {
-              AsyncData(:final value) => TabBarView(
-                children: [
-                  _TaskList(tasks: _inboxTasks(value), emptyHint: _inboxEmptyHint),
-                  _TaskList(tasks: _todayTasks(value), emptyHint: _todayEmptyHint),
-                  _TaskList(tasks: value, emptyHint: _allEmptyHint),
+    return Scaffold(
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => TaskCreateSheet.show(context),
+        tooltip: 'Aufgabe erfassen',
+        child: const Icon(Icons.add),
+      ),
+      body: DefaultTabController(
+        length: 3,
+        child: Column(
+          children: [
+            const Material(
+              child: TabBar(
+                tabs: [
+                  Tab(text: 'Inbox'),
+                  Tab(text: 'Heute'),
+                  Tab(text: 'Alle'),
                 ],
               ),
-              AsyncError(:final error) => _ErrorView(
-                message: error is Failure ? error.message : 'Aufgaben konnten nicht geladen werden.',
-                onRetry: () => ref.read(taskListProvider.notifier).refresh(),
-              ),
-              _ => const Center(child: CircularProgressIndicator()),
-            },
-          ),
-        ],
+            ),
+            Expanded(
+              child: switch (tasks) {
+                AsyncData(:final value) => TabBarView(
+                  children: [
+                    _TaskList(tasks: _inboxTasks(value), emptyHint: _inboxEmptyHint),
+                    _TaskList(tasks: _todayTasks(value), emptyHint: _todayEmptyHint),
+                    _TaskList(tasks: value, emptyHint: _allEmptyHint),
+                  ],
+                ),
+                AsyncError(:final error) => _ErrorView(
+                  message: error is Failure
+                      ? error.message
+                      : 'Aufgaben konnten nicht geladen werden.',
+                  onRetry: () => ref.read(taskListProvider.notifier).refresh(),
+                ),
+                _ => const Center(child: CircularProgressIndicator()),
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -114,8 +126,9 @@ class _TaskTile extends StatelessWidget {
     return ListTile(
       leading: Icon(_statusIcon(task.status)),
       title: Text(task.titel),
-      subtitle: deadline != null ? Text('Fällig: ${_formatDate(deadline)}') : null,
+      subtitle: deadline != null ? Text('Fällig: ${formatTaskDate(deadline)}') : null,
       trailing: task.energieLevel != null ? Chip(label: Text(task.energieLevel!)) : null,
+      onTap: () => context.push('/tasks/${task.id}', extra: task),
     );
   }
 
@@ -126,13 +139,6 @@ class _TaskTile extends StatelessWidget {
     'archiviert' => Icons.archive_outlined,
     _ => Icons.circle_outlined,
   };
-}
-
-String _formatDate(DateTime date) {
-  final local = date.toLocal();
-  final day = local.day.toString().padLeft(2, '0');
-  final month = local.month.toString().padLeft(2, '0');
-  return '$day.$month.${local.year}';
 }
 
 class _ErrorView extends StatelessWidget {
