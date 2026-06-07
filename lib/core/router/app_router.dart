@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/auth/presentation/login_screen.dart';
 import '../../features/contacts/presentation/contacts_screen.dart';
 import '../../features/dashboard/presentation/dashboard_screen.dart';
 import '../../features/events/presentation/events_screen.dart';
@@ -10,15 +11,33 @@ import '../../features/projects/presentation/projects_screen.dart';
 import '../../features/reminders/presentation/reminders_screen.dart';
 import '../../features/tasks/presentation/tasks_screen.dart';
 import '../../features/wiki/presentation/wiki_screen.dart';
+import '../auth/auth_provider.dart';
 import 'app_shell.dart';
 
 /// Zentrale Router-Konfiguration. Jedes Modul lebt in einem eigenen
 /// Branch des `StatefulShellRoute` — `AppShell` stellt Menü und
 /// Kontext-Schalter bereit (siehe M0-Deliverable).
+///
+/// Solange [authProvider] keinen eingeloggten Benutzer liefert, leitet
+/// `redirect` auf `/login` um; danach zurück auf die Startseite. Der
+/// Provider beobachtet [authProvider], damit der Router bei Login/Logout
+/// neu aufgebaut und die Umleitung neu ausgewertet wird.
 final goRouterProvider = Provider<GoRouter>((ref) {
+  final authState = ref.watch(authProvider);
+  final isAuthenticated = authState.value ?? false;
+
   return GoRouter(
     initialLocation: '/',
+    redirect: (context, state) {
+      if (authState.isLoading) return null;
+
+      final loggingIn = state.matchedLocation == '/login';
+      if (!isAuthenticated) return loggingIn ? null : '/login';
+      if (loggingIn) return '/';
+      return null;
+    },
     routes: [
+      GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             AppShell(navigationShell: navigationShell),
